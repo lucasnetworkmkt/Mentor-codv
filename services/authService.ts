@@ -1,4 +1,3 @@
-
 import { UserProfile } from "../types";
 
 // Keys for LocalStorage (Simulating Database)
@@ -10,7 +9,10 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Helper for simple ID generation (UUID simulation)
 const generateId = () => {
-  return crypto.randomUUID();
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
 };
 
 interface AuthResponse {
