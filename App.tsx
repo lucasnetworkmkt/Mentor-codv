@@ -7,8 +7,8 @@ import ExecutionTimer from './components/ExecutionTimer';
 import ChatHistory from './components/ChatHistory';
 import EagleEmblem from './components/EagleEmblem';
 import ProgressionModal from './components/ProgressionModal';
-import { AppView, UserStats, TimerState, ChatSession, Message, UserProfile } from './types';
-import { MessageSquare, Mic, Map, Timer, Menu, X, Terminal, Trophy, Star, Zap, Clock, LogIn, Lock, UserPlus, Mail, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react';
+import { AppView, UserStats, TimerState, ChatSession, UserProfile, MentalMapItem } from './types';
+import { MessageSquare, Mic, Map, Timer, Menu, X, Terminal, Trophy, Star, Zap, Clock, LogIn, Lock, UserPlus, AlertCircle, Loader2 } from 'lucide-react';
 import { INITIAL_MESSAGE } from './constants';
 import { authService } from './services/authService';
 
@@ -17,72 +17,59 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [progressionModalOpen, setProgressionModalOpen] = useState(false);
   
-  // --- Auth State ---
+  // --- Auth States ---
   const [user, setUser] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
-  const [authLoading, setAuthLoading] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [authSuccessMsg, setAuthSuccessMsg] = useState('');
-  
-  // Form State
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState(''); // Added confirm password
-  const [name, setName] = useState('');
 
-  // --- Auth Handlers ---
-  
-  // Check session on mount
+  // Form Inputs
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [regName, setRegName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPass, setRegPass] = useState('');
+
+  // --- Initial Auth Check ---
   useEffect(() => {
-    const initSession = async () => {
-      const session = await authService.getSession();
-      if (session) {
-        setUser(session);
+    const checkSession = async () => {
+      const currentUser = await authService.getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
         setCurrentView(AppView.CHAT);
       }
     };
-    initSession();
+    checkSession();
   }, []);
 
-  const handleAuthSubmit = async (e: React.FormEvent) => {
+  // --- Auth Handlers ---
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
-    setAuthSuccessMsg('');
-    setAuthLoading(true);
-
+    setIsLoadingAuth(true);
     try {
-      // Basic Validation
-      if (!email.includes('@')) throw new Error('Formato de e-mail inválido.');
-      if (password.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.');
-
-      let profile: UserProfile;
-
-      if (authMode === 'LOGIN') {
-        profile = await authService.login(email, password);
-      } else {
-        // Register Validation
-        if (!name.trim()) throw new Error("O Codinome é obrigatório.");
-        if (password !== confirmPassword) throw new Error("As senhas não coincidem.");
-        
-        profile = await authService.register(name, email, password);
-        setAuthSuccessMsg("Conta criada com sucesso. Iniciando...");
-      }
-      
-      // Artificial delay for UX
-      setTimeout(() => {
-          setUser(profile);
-          setCurrentView(AppView.CHAT);
-          // Clear forms
-          setEmail('');
-          setPassword('');
-          setConfirmPassword('');
-          setName('');
-      }, 500);
-
+      const response = await authService.login(loginEmail, loginPass);
+      setUser(response.user);
+      setCurrentView(AppView.CHAT);
     } catch (err: any) {
-      setAuthError(err.message || "Erro desconhecido.");
+      setAuthError(err.message || 'Erro ao acessar o sistema.');
     } finally {
-      setAuthLoading(false);
+      setIsLoadingAuth(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setIsLoadingAuth(true);
+    try {
+      const response = await authService.register(regName, regEmail, regPass);
+      setUser(response.user);
+      setCurrentView(AppView.CHAT);
+    } catch (err: any) {
+      setAuthError(err.message || 'Erro ao criar conta.');
+    } finally {
+      setIsLoadingAuth(false);
     }
   };
 
@@ -90,39 +77,44 @@ const App: React.FC = () => {
     await authService.logout();
     setUser(null);
     setCurrentView(AppView.LOGIN);
+    setAuthMode('LOGIN');
+    setLoginEmail('');
+    setLoginPass('');
+    setRegName('');
+    setRegEmail('');
+    setRegPass('');
     setSidebarOpen(false);
-    // Reset Data States to prevent flashing old data
-    setSessions([]);
-    setUserStats({ userId: '', points: 0, level: 1, streak: 0, achievements: [] });
   };
 
-  // --- Data Loading Logic (Scoped by userId) ---
+  // --- Data Loading Logic (Strictly tied to user.id) ---
   
-  // Helper to load data only when user is present
-  const loadUserData = <T,>(userId: string, key: string, defaultVal: T): T => {
-    const saved = localStorage.getItem(`mentor_data_${userId}_${key}`);
+  const loadUserData = <T,>(key: string, defaultVal: T): T => {
+    if (!user?.id) return defaultVal;
+    const saved = localStorage.getItem(`mentor_data_${user.id}_${key}`);
     try {
       if (saved) return JSON.parse(saved);
     } catch (e) { console.error(`Error loading ${key}`, e); }
     return defaultVal;
   };
 
-  const saveUserData = (userId: string, key: string, data: any) => {
-    localStorage.setItem(`mentor_data_${userId}_${key}`, JSON.stringify(data));
+  const saveUserData = (key: string, data: any) => {
+    if (!user?.id) return;
+    localStorage.setItem(`mentor_data_${user.id}_${key}`, JSON.stringify(data));
   };
 
   // State Declarations
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [mentalMaps, setMentalMaps] = useState<MentalMapItem[]>([]); // New state for Maps
   const [activeSessionId, setActiveSessionId] = useState<string>('');
   const [userStats, setUserStats] = useState<UserStats>({ userId: '', points: 0, level: 1, streak: 0, achievements: [] });
   const [timer, setTimer] = useState<TimerState>({ minutes: 25, seconds: 0, isActive: false, mode: 'FOCUS', deliverable: '' });
 
   // Load Data Effect (Runs whenever user changes)
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
 
     // Load Sessions
-    const loadedSessions = loadUserData<ChatSession[]>(user.id, 'sessions', [{
+    const loadedSessions = loadUserData<ChatSession[]>('sessions', [{
       id: Date.now().toString(),
       title: 'Sessão Inicial',
       messages: [{ id: 'init', role: 'model', text: INITIAL_MESSAGE, timestamp: new Date() }],
@@ -135,12 +127,19 @@ const App: React.FC = () => {
         lastModified: new Date(s.lastModified),
         messages: s.messages.map(m => ({...m, timestamp: new Date(m.timestamp)}))
     }));
-    
     setSessions(parsedSessions);
     setActiveSessionId(parsedSessions[0].id);
 
+    // Load Mental Maps
+    const loadedMaps = loadUserData<MentalMapItem[]>('maps', []);
+    const parsedMaps = loadedMaps.map(m => ({
+      ...m,
+      createdAt: new Date(m.createdAt)
+    }));
+    setMentalMaps(parsedMaps);
+
     // Load Stats
-    const loadedStats = loadUserData<UserStats>(user.id, 'stats', {
+    const loadedStats = loadUserData<UserStats>('stats', {
       userId: user.id,
       points: 0,
       level: 1,
@@ -149,16 +148,20 @@ const App: React.FC = () => {
     });
     setUserStats(loadedStats);
 
-  }, [user]);
+  }, [user?.id]);
 
   // Persistence Effects
   useEffect(() => {
-    if (user && sessions.length > 0) saveUserData(user.id, 'sessions', sessions);
-  }, [sessions, user]);
+    if (user?.id && sessions.length > 0) saveUserData('sessions', sessions);
+  }, [sessions, user?.id]);
 
   useEffect(() => {
-    if (user) saveUserData(user.id, 'stats', userStats);
-  }, [userStats, user]);
+    if (user?.id) saveUserData('maps', mentalMaps);
+  }, [mentalMaps, user?.id]);
+
+  useEffect(() => {
+    if (user?.id) saveUserData('stats', userStats);
+  }, [userStats, user?.id]);
 
 
   // --- Logic Functions ---
@@ -181,7 +184,6 @@ const App: React.FC = () => {
   };
 
   const getActiveSession = () => {
-    // SAFEGUARD: If sessions haven't loaded yet (race condition on login), return a dummy session
     if (sessions.length === 0) {
         return {
             id: 'loading',
@@ -191,6 +193,16 @@ const App: React.FC = () => {
         };
     }
     return sessions.find(s => s.id === activeSessionId) || sessions[0];
+  };
+
+  const saveMentalMap = (topic: string, content: string) => {
+    const newMap: MentalMapItem = {
+      id: Date.now().toString(),
+      topic,
+      content,
+      createdAt: new Date()
+    };
+    setMentalMaps(prev => [newMap, ...prev]);
   };
 
   const addPoints = (amount: number, reason?: string) => {
@@ -226,8 +238,10 @@ const App: React.FC = () => {
           if (prev.seconds === 0) {
             if (prev.minutes === 0) {
               clearInterval(interval);
-              const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
-              audio.play().catch(() => {});
+              // PLAY LOUDER ALARM
+              const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3');
+              audio.volume = 1.0;
+              audio.play().catch(e => console.log("Audio autoplay blocked", e));
               return { ...prev, isActive: false };
             }
             return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
@@ -255,7 +269,12 @@ const App: React.FC = () => {
       case AppView.VOICE:
         return <LiveVoice />;
       case AppView.MAPS:
-        return <MentalMap />;
+        return (
+          <MentalMap 
+            history={mentalMaps}
+            onSave={saveMentalMap}
+          />
+        );
       case AppView.TIMER:
         return (
           <ExecutionTimer 
@@ -319,145 +338,117 @@ const App: React.FC = () => {
                   <Terminal size={32} className="text-white" />
                </div>
                <h1 className="text-2xl font-bold uppercase tracking-widest">Acesso ao Mentor</h1>
-               <p className="text-[#9FB4C7] text-sm mt-2">Identidade Verificada & Dados Persistentes</p>
+               <p className="text-[#9FB4C7] text-sm mt-2">Identidade Verificada. Evolução Contínua.</p>
             </div>
 
-            {/* Error Message */}
-            {authError && (
-              <div className="mb-6 bg-red-900/20 border border-red-900/50 p-3 rounded flex items-start gap-2 animate-in fade-in">
-                <AlertTriangle className="text-red-500 shrink-0" size={16} />
-                <p className="text-xs text-red-200">{authError}</p>
-              </div>
-            )}
-
-            {/* Success Message */}
-            {authSuccessMsg && (
-              <div className="mb-6 bg-green-900/20 border border-green-900/50 p-3 rounded flex items-start gap-2 animate-in fade-in">
-                <CheckCircle2 className="text-green-500 shrink-0" size={16} />
-                <p className="text-xs text-green-200">{authSuccessMsg}</p>
-              </div>
-            )}
-
-            {/* Toggle Tabs */}
+            {/* Auth Toggle */}
             <div className="flex bg-[#050505] rounded-lg p-1 mb-6 border border-[#333]">
               <button 
-                onClick={() => { setAuthMode('LOGIN'); setAuthError(''); setAuthSuccessMsg(''); }}
-                className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all ${authMode === 'LOGIN' ? 'bg-[#333] text-white shadow' : 'text-[#555] hover:text-[#9FB4C7]'}`}
+                onClick={() => { setAuthMode('LOGIN'); setAuthError(''); }}
+                className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded transition-all ${authMode === 'LOGIN' ? 'bg-[#333] text-white shadow' : 'text-[#555] hover:text-[#9FB4C7]'}`}
               >
                 Login
               </button>
               <button 
-                onClick={() => { setAuthMode('REGISTER'); setAuthError(''); setAuthSuccessMsg(''); }}
-                className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all ${authMode === 'REGISTER' ? 'bg-[#E50914] text-white shadow' : 'text-[#555] hover:text-[#9FB4C7]'}`}
+                onClick={() => { setAuthMode('REGISTER'); setAuthError(''); }}
+                className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded transition-all ${authMode === 'REGISTER' ? 'bg-[#E50914] text-white shadow' : 'text-[#555] hover:text-[#9FB4C7]'}`}
               >
                 Criar Conta
               </button>
             </div>
 
-            {/* AUTH FORM */}
-            <form onSubmit={handleAuthSubmit} className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-               
-               {/* Register Name Field */}
-               {authMode === 'REGISTER' && (
-                 <div>
-                    <label className="block text-[10px] font-mono text-[#9FB4C7] uppercase mb-1 ml-1">Como devemos chamá-lo?</label>
-                    <div className="relative">
-                      <UserPlus className="absolute left-4 top-1/2 -translate-y-1/2 text-[#555]" size={18} />
+            {/* ERROR DISPLAY */}
+            {authError && (
+              <div className="mb-4 bg-red-900/20 border border-red-900/50 p-3 rounded flex items-center gap-2 animate-in slide-in-from-top-2">
+                 <AlertCircle size={16} className="text-[#E50914]" />
+                 <p className="text-xs text-[#E50914] font-bold">{authError}</p>
+              </div>
+            )}
+
+            {/* LOGIN FORM */}
+            {authMode === 'LOGIN' && (
+              <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                 <div className="space-y-3">
+                    <div>
                       <input 
-                        type="text" 
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                        placeholder="Seu Codinome"
-                        className="w-full bg-[#050505] border border-[#333] rounded-lg py-4 pl-12 pr-4 text-white placeholder-[#333] focus:outline-none focus:border-[#E50914] focus:shadow-[0_0_15px_rgba(229,9,20,0.1)] transition-all font-mono"
+                        type="email" 
+                        value={loginEmail}
+                        onChange={e => setLoginEmail(e.target.value)}
+                        placeholder="Seu E-mail"
+                        className="w-full bg-[#050505] border border-[#333] rounded-lg p-4 text-white placeholder-[#555] focus:outline-none focus:border-[#E50914] font-mono text-sm"
                         required
-                        disabled={authLoading}
                       />
                     </div>
-                 </div>
-               )}
-
-               {/* Email Field */}
-               <div>
-                  <label className="block text-[10px] font-mono text-[#9FB4C7] uppercase mb-1 ml-1">E-mail de Acesso</label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-[#555]" size={18} />
-                    <input 
-                      type="email" 
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      placeholder="seu@email.com"
-                      className="w-full bg-[#050505] border border-[#333] rounded-lg py-4 pl-12 pr-4 text-white placeholder-[#333] focus:outline-none focus:border-[#E50914] focus:shadow-[0_0_15px_rgba(229,9,20,0.1)] transition-all font-mono"
-                      required
-                      autoFocus
-                      disabled={authLoading}
-                    />
-                  </div>
-               </div>
-
-               {/* Password Field */}
-               <div>
-                  <label className="block text-[10px] font-mono text-[#9FB4C7] uppercase mb-1 ml-1">Senha Segura</label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#555]" size={18} />
-                    <input 
-                      type="password" 
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-[#050505] border border-[#333] rounded-lg py-4 pl-12 pr-4 text-white placeholder-[#333] focus:outline-none focus:border-[#E50914] focus:shadow-[0_0_15px_rgba(229,9,20,0.1)] transition-all font-mono"
-                      required
-                      minLength={6}
-                      disabled={authLoading}
-                    />
-                  </div>
-               </div>
-
-               {/* Confirm Password Field (REGISTER ONLY) */}
-               {authMode === 'REGISTER' && (
-                 <div>
-                    <label className="block text-[10px] font-mono text-[#9FB4C7] uppercase mb-1 ml-1">Confirme a Senha</label>
-                    <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#555]" size={18} />
+                    <div>
                       <input 
                         type="password" 
-                        value={confirmPassword}
-                        onChange={e => setConfirmPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className={`w-full bg-[#050505] border rounded-lg py-4 pl-12 pr-4 text-white placeholder-[#333] focus:outline-none focus:shadow-[0_0_15px_rgba(229,9,20,0.1)] transition-all font-mono ${
-                            confirmPassword && password !== confirmPassword 
-                            ? 'border-red-500 focus:border-red-500' 
-                            : 'border-[#333] focus:border-[#E50914]'
-                        }`}
+                        value={loginPass}
+                        onChange={e => setLoginPass(e.target.value)}
+                        placeholder="Sua Senha"
+                        className="w-full bg-[#050505] border border-[#333] rounded-lg p-4 text-white placeholder-[#555] focus:outline-none focus:border-[#E50914] font-mono text-sm"
                         required
-                        minLength={6}
-                        disabled={authLoading}
                       />
                     </div>
-                    {confirmPassword && password !== confirmPassword && (
-                        <p className="text-red-500 text-[10px] mt-1 ml-1 font-mono">As senhas não coincidem.</p>
-                    )}
                  </div>
-               )}
+                 <button 
+                   type="submit"
+                   disabled={isLoadingAuth}
+                   className="w-full bg-[#333] hover:bg-[#E50914] hover:shadow-[0_0_20px_rgba(229,9,20,0.4)] disabled:opacity-50 text-white font-bold py-4 rounded-lg uppercase tracking-widest transition-all flex items-center justify-center gap-2 mt-2"
+                 >
+                   {isLoadingAuth ? <Loader2 className="animate-spin" /> : <><LogIn size={18} /> Acessar Sistema</>}
+                 </button>
+              </form>
+            )}
 
-               <button 
-                 type="submit"
-                 disabled={authLoading || (authMode === 'REGISTER' && password !== confirmPassword)}
-                 className="w-full bg-[#333] hover:bg-[#E50914] hover:shadow-[0_0_20px_rgba(229,9,20,0.4)] disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-lg uppercase tracking-widest transition-all flex items-center justify-center gap-2 mt-4"
-               >
-                 {authLoading ? (
-                   <Loader2 className="animate-spin" size={20} />
-                 ) : (
-                   <>
-                     {authMode === 'LOGIN' ? <LogIn size={18} /> : <UserPlus size={18} />}
-                     {authMode === 'LOGIN' ? 'Acessar Sistema' : 'Registrar Identidade'}
-                   </>
-                 )}
-               </button>
-            </form>
+            {/* REGISTER FORM */}
+            {authMode === 'REGISTER' && (
+              <form onSubmit={handleRegister} className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                 <div className="space-y-3">
+                    <div>
+                      <input 
+                        type="text" 
+                        value={regName}
+                        onChange={e => setRegName(e.target.value)}
+                        placeholder="Seu Nome / Codinome"
+                        className="w-full bg-[#050505] border border-[#333] rounded-lg p-4 text-white placeholder-[#555] focus:outline-none focus:border-[#E50914] font-mono text-sm"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <input 
+                        type="email" 
+                        value={regEmail}
+                        onChange={e => setRegEmail(e.target.value)}
+                        placeholder="E-mail"
+                        className="w-full bg-[#050505] border border-[#333] rounded-lg p-4 text-white placeholder-[#555] focus:outline-none focus:border-[#E50914] font-mono text-sm"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <input 
+                        type="password" 
+                        value={regPass}
+                        onChange={e => setRegPass(e.target.value)}
+                        placeholder="Senha Forte"
+                        className="w-full bg-[#050505] border border-[#333] rounded-lg p-4 text-white placeholder-[#555] focus:outline-none focus:border-[#E50914] font-mono text-sm"
+                        required
+                        minLength={6}
+                      />
+                    </div>
+                 </div>
+                 <button 
+                   type="submit"
+                   disabled={isLoadingAuth}
+                   className="w-full bg-[#E50914] hover:bg-red-700 hover:shadow-[0_0_20px_rgba(229,9,20,0.4)] disabled:opacity-50 text-white font-bold py-4 rounded-lg uppercase tracking-widest transition-all flex items-center justify-center gap-2 mt-2"
+                 >
+                   {isLoadingAuth ? <Loader2 className="animate-spin" /> : <><UserPlus size={18} /> Criar Identidade</>}
+                 </button>
+              </form>
+            )}
 
             <div className="mt-8 text-center border-t border-[#333] pt-4">
                <p className="text-[10px] text-[#555] uppercase font-mono flex items-center justify-center gap-2">
-                  <Lock size={10} /> Segurança: Salted SHA-256 (Local)
+                  <Lock size={10} /> Sistema Seguro V2.0
                </p>
             </div>
          </div>
@@ -492,9 +483,12 @@ const App: React.FC = () => {
           </div>
           <div>
              <h1 className="text-white font-bold tracking-tighter uppercase leading-none text-lg">O Mentor</h1>
-             <span className="text-[#FFD700] text-[10px] font-mono tracking-widest uppercase truncate max-w-[150px] block" title={user?.email || ''}>
-               {user?.name.split(' ')[0] || 'Usuário'}
-             </span>
+             <div className="flex flex-col">
+                <span className="text-[#FFD700] text-xs font-bold tracking-wide">{user?.name}</span>
+                <span className="text-[#555] text-[10px] font-mono tracking-widest uppercase truncate max-w-[150px]">
+                  ID: {user?.id?.substring(0, 6)}...
+                </span>
+             </div>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="md:hidden ml-auto text-[#9FB4C7]">
             <X size={24} />
@@ -584,7 +578,7 @@ const App: React.FC = () => {
         </div>
 
         <main className="flex-1 overflow-hidden relative">
-           {user ? renderView() : null}
+           {user?.id ? renderView() : null}
         </main>
       </div>
     </div>

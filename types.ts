@@ -10,10 +10,9 @@ export enum AppView {
 
 export interface UserProfile {
   id: string;
-  email: string;
   name: string;
+  email: string;
   createdAt: string; // ISO Date
-  lastLogin: string; // ISO Date
 }
 
 export interface Message {
@@ -28,6 +27,13 @@ export interface ChatSession {
   title: string;
   messages: Message[];
   lastModified: Date;
+}
+
+export interface MentalMapItem {
+  id: string;
+  topic: string;
+  content: string;
+  createdAt: Date;
 }
 
 export interface TimerState {
