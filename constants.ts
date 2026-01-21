@@ -1,3 +1,4 @@
+
 export const APP_NAME = "O Mentor - Código da Evolução";
 
 export const SYSTEM_INSTRUCTION = `
